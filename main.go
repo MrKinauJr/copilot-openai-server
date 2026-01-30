@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"flag"
 	"fmt"
 	"io"
@@ -18,6 +19,14 @@ import (
 func main() {
 	port := flag.Int("port", 8080, "Port to listen on")
 	flag.Parse()
+
+	// Read API key once at startup
+	apiKey := os.Getenv("API_KEY")
+	if apiKey != "" {
+		log.Printf("API key validation enabled")
+	} else {
+		log.Printf("API key validation disabled (API_KEY not set)")
+	}
 
 	// Create server
 	server, err := NewServer()
@@ -39,7 +48,7 @@ func main() {
 	})
 
 	// Middleware chain: logging -> CORS -> API key validation -> handlers
-	handler := loggingMiddleware(corsMiddleware(apiKeyMiddleware(mux)))
+	handler := loggingMiddleware(corsMiddleware(apiKeyMiddleware(mux, apiKey)))
 
 	// Start server
 	addr := fmt.Sprintf(":%d", *port)
@@ -104,31 +113,42 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// apiKeyMiddleware validates the API key if API_KEY environment variable is set
-func apiKeyMiddleware(next http.Handler) http.Handler {
+// apiKeyMiddleware validates the API key if one is configured
+func apiKeyMiddleware(next http.Handler, expectedKey string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Get the optional API key from environment
-		expectedKey := os.Getenv("API_KEY")
+		// Skip validation for health check endpoint
+		if r.URL.Path == "/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		
-		// If no API_KEY is set, allow any request (current behavior)
+		// If no API_KEY is configured, allow any request (current behavior)
 		if expectedKey == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
 		
-		// API_KEY is set, so we need to validate
+		// API_KEY is configured, so we need to validate
 		authHeader := r.Header.Get("Authorization")
 		
 		// Extract the key from "Bearer <key>" format
 		var providedKey string
 		if strings.HasPrefix(authHeader, "Bearer ") {
-			providedKey = strings.TrimPrefix(authHeader, "Bearer ")
+			providedKey = strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 		} else {
-			providedKey = authHeader
+			providedKey = strings.TrimSpace(authHeader)
 		}
 		
-		// Validate the key
-		if providedKey != expectedKey {
+		// Reject empty keys
+		if providedKey == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`))
+			return
+		}
+		
+		// Use constant-time comparison to prevent timing attacks
+		if subtle.ConstantTimeCompare([]byte(providedKey), []byte(expectedKey)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte(`{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`))

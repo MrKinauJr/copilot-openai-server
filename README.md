@@ -78,8 +78,15 @@ export API_KEY="your-secret-key-here"
 ```
 
 **Behavior:**
-- **If `API_KEY` is set:** The server validates the `Authorization` header in all requests. Requests must include `Authorization: Bearer your-secret-key-here` or the API key directly.
+- **If `API_KEY` is set:** The server validates the `Authorization` header in all API requests (except `/health`). Requests must include the API key in one of these formats:
+  - `Authorization: Bearer your-secret-key-here` (standard Bearer token format)
+  - `Authorization: your-secret-key-here` (direct key format)
+  - Note: The implementation is case-sensitive and expects exactly `Bearer ` (with capital B and one space) as the prefix.
 - **If `API_KEY` is not set:** The server accepts any API key (default behavior, no validation).
+
+**Security Notes:**
+- The `/health` endpoint always bypasses API key validation for monitoring purposes.
+- API key comparison uses constant-time comparison to prevent timing attacks.
 
 **Example with API key:**
 

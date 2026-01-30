@@ -3,7 +3,6 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 )
 
@@ -16,67 +15,106 @@ func TestApiKeyMiddleware(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		envAPIKey      string
+		apiKey         string
 		authHeader     string
+		path           string
 		expectedStatus int
 		expectedBody   string
 	}{
 		{
-			name:           "No API_KEY env var set - allows any key",
-			envAPIKey:      "",
+			name:           "No API key configured - allows any key",
+			apiKey:         "",
 			authHeader:     "Bearer random-key",
+			path:           "/v1/models",
 			expectedStatus: http.StatusOK,
 			expectedBody:   "OK",
 		},
 		{
-			name:           "No API_KEY env var set - allows no auth header",
-			envAPIKey:      "",
+			name:           "No API key configured - allows no auth header",
+			apiKey:         "",
 			authHeader:     "",
+			path:           "/v1/models",
 			expectedStatus: http.StatusOK,
 			expectedBody:   "OK",
 		},
 		{
-			name:           "API_KEY set - valid key with Bearer prefix",
-			envAPIKey:      "secret-key-123",
+			name:           "API key configured - valid key with Bearer prefix",
+			apiKey:         "secret-key-123",
 			authHeader:     "Bearer secret-key-123",
+			path:           "/v1/models",
 			expectedStatus: http.StatusOK,
 			expectedBody:   "OK",
 		},
 		{
-			name:           "API_KEY set - valid key without Bearer prefix",
-			envAPIKey:      "secret-key-123",
+			name:           "API key configured - valid key without Bearer prefix",
+			apiKey:         "secret-key-123",
 			authHeader:     "secret-key-123",
+			path:           "/v1/models",
 			expectedStatus: http.StatusOK,
 			expectedBody:   "OK",
 		},
 		{
-			name:           "API_KEY set - invalid key",
-			envAPIKey:      "secret-key-123",
+			name:           "API key configured - invalid key",
+			apiKey:         "secret-key-123",
 			authHeader:     "Bearer wrong-key",
+			path:           "/v1/models",
 			expectedStatus: http.StatusUnauthorized,
 			expectedBody:   `{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`,
 		},
 		{
-			name:           "API_KEY set - no auth header",
-			envAPIKey:      "secret-key-123",
+			name:           "API key configured - no auth header",
+			apiKey:         "secret-key-123",
 			authHeader:     "",
+			path:           "/v1/models",
 			expectedStatus: http.StatusUnauthorized,
 			expectedBody:   `{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`,
+		},
+		{
+			name:           "API key configured - Bearer with no key",
+			apiKey:         "secret-key-123",
+			authHeader:     "Bearer ",
+			path:           "/v1/models",
+			expectedStatus: http.StatusUnauthorized,
+			expectedBody:   `{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`,
+		},
+		{
+			name:           "API key configured - Bearer with whitespace only",
+			apiKey:         "secret-key-123",
+			authHeader:     "Bearer   ",
+			path:           "/v1/models",
+			expectedStatus: http.StatusUnauthorized,
+			expectedBody:   `{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`,
+		},
+		{
+			name:           "API key configured - valid key with extra whitespace",
+			apiKey:         "secret-key-123",
+			authHeader:     "Bearer   secret-key-123  ",
+			path:           "/v1/models",
+			expectedStatus: http.StatusOK,
+			expectedBody:   "OK",
+		},
+		{
+			name:           "Health check bypasses API key validation",
+			apiKey:         "secret-key-123",
+			authHeader:     "",
+			path:           "/health",
+			expectedStatus: http.StatusOK,
+			expectedBody:   "OK",
+		},
+		{
+			name:           "Health check with wrong key still works",
+			apiKey:         "secret-key-123",
+			authHeader:     "Bearer wrong-key",
+			path:           "/health",
+			expectedStatus: http.StatusOK,
+			expectedBody:   "OK",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set the environment variable
-			if tt.envAPIKey != "" {
-				os.Setenv("API_KEY", tt.envAPIKey)
-				defer os.Unsetenv("API_KEY")
-			} else {
-				os.Unsetenv("API_KEY")
-			}
-
 			// Create a request
-			req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			if tt.authHeader != "" {
 				req.Header.Set("Authorization", tt.authHeader)
 			}
@@ -85,7 +123,7 @@ func TestApiKeyMiddleware(t *testing.T) {
 			rr := httptest.NewRecorder()
 
 			// Wrap the handler with the middleware
-			handler := apiKeyMiddleware(nextHandler)
+			handler := apiKeyMiddleware(nextHandler, tt.apiKey)
 			handler.ServeHTTP(rr, req)
 
 			// Check status code
