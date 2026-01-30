@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -37,8 +38,8 @@ func main() {
 		w.Write([]byte("OK"))
 	})
 
-	// Middleware chain: logging -> CORS -> handlers
-	handler := loggingMiddleware(corsMiddleware(mux))
+	// Middleware chain: logging -> CORS -> API key validation -> handlers
+	handler := loggingMiddleware(corsMiddleware(apiKeyMiddleware(mux)))
 
 	// Start server
 	addr := fmt.Sprintf(":%d", *port)
@@ -99,6 +100,42 @@ func corsMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		next.ServeHTTP(w, r)
+	})
+}
+
+// apiKeyMiddleware validates the API key if API_KEY environment variable is set
+func apiKeyMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Get the optional API key from environment
+		expectedKey := os.Getenv("API_KEY")
+		
+		// If no API_KEY is set, allow any request (current behavior)
+		if expectedKey == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		
+		// API_KEY is set, so we need to validate
+		authHeader := r.Header.Get("Authorization")
+		
+		// Extract the key from "Bearer <key>" format
+		var providedKey string
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			providedKey = strings.TrimPrefix(authHeader, "Bearer ")
+		} else {
+			providedKey = authHeader
+		}
+		
+		// Validate the key
+		if providedKey != expectedKey {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`))
+			return
+		}
+		
+		// Key is valid, proceed
 		next.ServeHTTP(w, r)
 	})
 }

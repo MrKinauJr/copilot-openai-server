@@ -31,6 +31,14 @@ export GH_TOKEN="your_personal_access_token"
 docker run -e GH_TOKEN=$GH_TOKEN -p 8080:8080 copilot-openai-server
 ```
 
+**Optional:** Enable API key validation:
+
+```bash
+export GH_TOKEN="your_personal_access_token"
+export API_KEY="your-secret-key"
+docker run -e GH_TOKEN=$GH_TOKEN -e API_KEY=$API_KEY -p 8080:8080 copilot-openai-server
+```
+
 **GitHub personal access token (PAT)** must be fine-grained with the `Copilot requests` permission enabled; see https://github.com/github/copilot-cli/issues/91 for details.
 
 The server will be available at `http://localhost:8080`.
@@ -57,6 +65,32 @@ go build -o copilot-server .
 
 # Specify a custom port
 ./copilot-server -port 9000
+```
+
+## API Key Authentication (Optional)
+
+You can optionally secure your server with an API key by setting the `API_KEY` environment variable:
+
+```bash
+# Run with API key validation enabled
+export API_KEY="your-secret-key-here"
+./copilot-server
+```
+
+**Behavior:**
+- **If `API_KEY` is set:** The server validates the `Authorization` header in all requests. Requests must include `Authorization: Bearer your-secret-key-here` or the API key directly.
+- **If `API_KEY` is not set:** The server accepts any API key (default behavior, no validation).
+
+**Example with API key:**
+
+```bash
+# Start server with API key
+export API_KEY="my-secure-key-123"
+./copilot-server
+
+# Make requests with the API key
+curl http://localhost:8080/v1/models \
+  -H "Authorization: Bearer my-secure-key-123"
 ```
 
 ## API Endpoints
@@ -134,8 +168,12 @@ You can easily use this with [Open WebUI](https://docs.openwebui.com/):
 2.  In Open WebUI, go to **Settings > Connections > OpenAI**.
 3.  Add a new connection:
     *   **API Base URL:** `http://localhost:8080`
-    *   **API Key:** `any-string` (not validated by this server, but authentication with Copilot happens via the CLI on the host machine).
+    *   **API Key:** 
+        - If you set the `API_KEY` environment variable, use that key value.
+        - If `API_KEY` is not set, you can use any string (not validated).
 4.  Save and select a Copilot model to start chatting.
+
+**Note:** Authentication with GitHub Copilot happens via the CLI on the host machine, separate from the optional API_KEY validation.
 
 ## Development
 

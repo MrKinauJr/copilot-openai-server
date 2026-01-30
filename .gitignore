@@ -1,0 +1,8 @@
+# Binaries
+copilot-server
+
+# Test binaries
+*.test
+
+# Go workspace file
+go.work
