@@ -121,16 +121,16 @@ func apiKeyMiddleware(next http.Handler, expectedKey string) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		
+
 		// If no API_KEY is configured, allow any request (current behavior)
 		if expectedKey == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
-		
+
 		// API_KEY is configured, so we need to validate
 		authHeader := r.Header.Get("Authorization")
-		
+
 		// Extract the key from "Bearer <key>" format
 		var providedKey string
 		if strings.HasPrefix(authHeader, "Bearer ") {
@@ -138,7 +138,7 @@ func apiKeyMiddleware(next http.Handler, expectedKey string) http.Handler {
 		} else {
 			providedKey = strings.TrimSpace(authHeader)
 		}
-		
+
 		// Reject empty keys
 		if providedKey == "" {
 			w.Header().Set("Content-Type", "application/json")
@@ -146,7 +146,7 @@ func apiKeyMiddleware(next http.Handler, expectedKey string) http.Handler {
 			w.Write([]byte(`{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`))
 			return
 		}
-		
+
 		// Use constant-time comparison to prevent timing attacks
 		if subtle.ConstantTimeCompare([]byte(providedKey), []byte(expectedKey)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
@@ -154,7 +154,7 @@ func apiKeyMiddleware(next http.Handler, expectedKey string) http.Handler {
 			w.Write([]byte(`{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`))
 			return
 		}
-		
+
 		// Key is valid, proceed
 		next.ServeHTTP(w, r)
 	})
