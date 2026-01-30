@@ -4,5 +4,9 @@ copilot-server
 # Test binaries
 *.test
 
+# Coverage files
+coverage.txt
+*.out
+
 # Go workspace file
 go.work
