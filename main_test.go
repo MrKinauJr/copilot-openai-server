@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -20,6 +22,7 @@ func TestApiKeyMiddleware(t *testing.T) {
 		path           string
 		expectedStatus int
 		expectedBody   string
+		checkJSON      bool
 	}{
 		{
 			name:           "No API key configured - allows any key",
@@ -28,6 +31,7 @@ func TestApiKeyMiddleware(t *testing.T) {
 			path:           "/v1/models",
 			expectedStatus: http.StatusOK,
 			expectedBody:   "OK",
+			checkJSON:      false,
 		},
 		{
 			name:           "No API key configured - allows no auth header",
@@ -36,6 +40,7 @@ func TestApiKeyMiddleware(t *testing.T) {
 			path:           "/v1/models",
 			expectedStatus: http.StatusOK,
 			expectedBody:   "OK",
+			checkJSON:      false,
 		},
 		{
 			name:           "API key configured - valid key with Bearer prefix",
@@ -44,6 +49,7 @@ func TestApiKeyMiddleware(t *testing.T) {
 			path:           "/v1/models",
 			expectedStatus: http.StatusOK,
 			expectedBody:   "OK",
+			checkJSON:      false,
 		},
 		{
 			name:           "API key configured - valid key without Bearer prefix",
@@ -52,6 +58,7 @@ func TestApiKeyMiddleware(t *testing.T) {
 			path:           "/v1/models",
 			expectedStatus: http.StatusOK,
 			expectedBody:   "OK",
+			checkJSON:      false,
 		},
 		{
 			name:           "API key configured - invalid key",
@@ -59,7 +66,8 @@ func TestApiKeyMiddleware(t *testing.T) {
 			authHeader:     "Bearer wrong-key",
 			path:           "/v1/models",
 			expectedStatus: http.StatusUnauthorized,
-			expectedBody:   `{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`,
+			expectedBody:   "",
+			checkJSON:      true,
 		},
 		{
 			name:           "API key configured - no auth header",
@@ -67,7 +75,8 @@ func TestApiKeyMiddleware(t *testing.T) {
 			authHeader:     "",
 			path:           "/v1/models",
 			expectedStatus: http.StatusUnauthorized,
-			expectedBody:   `{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`,
+			expectedBody:   "",
+			checkJSON:      true,
 		},
 		{
 			name:           "API key configured - Bearer with no key",
@@ -75,7 +84,8 @@ func TestApiKeyMiddleware(t *testing.T) {
 			authHeader:     "Bearer ",
 			path:           "/v1/models",
 			expectedStatus: http.StatusUnauthorized,
-			expectedBody:   `{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`,
+			expectedBody:   "",
+			checkJSON:      true,
 		},
 		{
 			name:           "API key configured - Bearer with whitespace only",
@@ -83,7 +93,8 @@ func TestApiKeyMiddleware(t *testing.T) {
 			authHeader:     "Bearer   ",
 			path:           "/v1/models",
 			expectedStatus: http.StatusUnauthorized,
-			expectedBody:   `{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`,
+			expectedBody:   "",
+			checkJSON:      true,
 		},
 		{
 			name:           "API key configured - valid key with extra whitespace",
@@ -92,6 +103,7 @@ func TestApiKeyMiddleware(t *testing.T) {
 			path:           "/v1/models",
 			expectedStatus: http.StatusOK,
 			expectedBody:   "OK",
+			checkJSON:      false,
 		},
 		{
 			name:           "Health check bypasses API key validation",
@@ -100,6 +112,7 @@ func TestApiKeyMiddleware(t *testing.T) {
 			path:           "/health",
 			expectedStatus: http.StatusOK,
 			expectedBody:   "OK",
+			checkJSON:      false,
 		},
 		{
 			name:           "Health check with wrong key still works",
@@ -108,6 +121,7 @@ func TestApiKeyMiddleware(t *testing.T) {
 			path:           "/health",
 			expectedStatus: http.StatusOK,
 			expectedBody:   "OK",
+			checkJSON:      false,
 		},
 	}
 
@@ -132,7 +146,28 @@ func TestApiKeyMiddleware(t *testing.T) {
 			}
 
 			// Check body
-			if rr.Body.String() != tt.expectedBody {
+			if tt.checkJSON {
+				// Parse and verify JSON structure for error responses
+				var errorResp struct {
+					Error struct {
+						Message string `json:"message"`
+						Type    string `json:"type"`
+					} `json:"error"`
+				}
+
+				if err := json.Unmarshal(rr.Body.Bytes(), &errorResp); err != nil {
+					t.Errorf("Failed to parse JSON response: %v", err)
+					return
+				}
+
+				// Verify the error message and type
+				if !strings.Contains(errorResp.Error.Message, "Invalid API key") {
+					t.Errorf("Expected error message to contain 'Invalid API key', got %q", errorResp.Error.Message)
+				}
+				if errorResp.Error.Type != "invalid_request_error" {
+					t.Errorf("Expected error type 'invalid_request_error', got %q", errorResp.Error.Type)
+				}
+			} else if rr.Body.String() != tt.expectedBody {
 				t.Errorf("Expected body %q, got %q", tt.expectedBody, rr.Body.String())
 			}
 		})

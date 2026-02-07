@@ -113,6 +113,13 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// writeUnauthorizedError writes a 401 unauthorized JSON error response
+func writeUnauthorizedError(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	w.Write([]byte(`{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`))
+}
+
 // apiKeyMiddleware validates the API key if one is configured
 func apiKeyMiddleware(next http.Handler, expectedKey string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -141,17 +148,13 @@ func apiKeyMiddleware(next http.Handler, expectedKey string) http.Handler {
 
 		// Reject empty keys
 		if providedKey == "" {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`))
+			writeUnauthorizedError(w)
 			return
 		}
 
 		// Use constant-time comparison to prevent timing attacks
 		if subtle.ConstantTimeCompare([]byte(providedKey), []byte(expectedKey)) != 1 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error":{"message":"Invalid API key","type":"invalid_request_error"}}`))
+			writeUnauthorizedError(w)
 			return
 		}
 
